@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8" />
+    <title>ANOME NFT 卡牌池子价格模拟</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <style>
+        :root {
+            --bg: #0b0f14;
+            --panel: #131a22;
+            --muted: #8aa0b2;
+            --text: #e8eef5;
+            --accent: #52a8ff;
+            --border: #1f2a35;
+            --good: #22c55e;
+            --warn: #f59e0b;
+            --bad: #ef4444;
+        }
+
+        * {
+            box-sizing: border-box
+        }
+
+        body {
+            margin: 0;
+            padding: 20px 16px 24px;
+            background: #0b0f14;
+            color: var(--text);
+            font: 14px/1.5 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto
+        }
+
+        h1 {
+            margin: 0 0 12px;
+            font-size: 20px
+        }
+
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 14px
+        }
+
+        .stack {
+            display: grid;
+            gap: 12px
+        }
+
+        .row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px
+        }
+
+        .row3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 12px
+        }
+
+        label {
+            display: block;
+            color: var(--muted);
+            margin-bottom: 6px
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            outline: none;
+            background: #0f1520;
+            color: var(--text);
+            font-variant-numeric: tabular-nums
+        }
+
+        input:focus,
+        select:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(82, 168, 255, .15)
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #2a67a3;
+            background: linear-gradient(180deg, #1a76d2, #125aa2);
+            color: #fff;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 600
+        }
+
+        .btn:active {
+            transform: translateY(1px)
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px
+        }
+
+        .stat {
+            background: #0f1520;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 10px
+        }
+
+        .stat h3 {
+            margin: 0 0 6px;
+            font-size: 12px;
+            color: var(--muted);
+            font-weight: 600
+        }
+
+        .stat .v {
+            font-size: 16px;
+            font-weight: 700
+        }
+
+        .pill {
+            display: inline-block;
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            color: var(--muted)
+        }
+
+        .pill.good {
+            border-color: #144a2a;
+            color: #a7f3d0;
+            background: rgba(34, 197, 94, .08)
+        }
+
+        .pill.warn {
+            border-color: #5a3c0c;
+            color: #fde68a;
+            background: rgba(245, 158, 11, .08)
+        }
+
+        .pill.bad {
+            border-color: #5f1a1a;
+            color: #fecaca;
+            background: rgba(239, 68, 68, .10)
+        }
+
+        .help {
+            font-size: 12px;
+            color: var(--muted)
+        }
+
+        .chart-wrap {
+            height: 360px
+        }
+
+        .kv {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px 20px;
+            font-size: 12px;
+            color: #a9b9c7
+        }
+
+        .kv-col {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .kv-item {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 4px 8px;
+        }
+
+        .kv-label {
+            color: #8aa0b2
+        }
+
+        .kv-value {
+            color: #dbe7f1;
+            font-weight: 600
+        }
+
+        @media (max-width:640px) {
+
+            .row,
+            .row3 {
+                grid-template-columns: 1fr
+            }
+
+            .kv {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>ANOME NFT 卡牌池子价格模拟</h1>
+
+        <!-- 上：控制与结果 -->
+        <div class="card stack">
+            <div class="row">
+                <div>
+                    <label>初始发行量 S₀<small class="help">（张）</small></label>
+                    <input id="initS" type="text" value="100000" />
+                </div>
+                <div>
+                    <label>初始价格 P₀<small class="help">（USDC）</small></label>
+                    <input id="initP" type="text" value="1" />
+                </div>
+            </div>
+
+            <div class="row3">
+                <div>
+                    <label>买入张数<small class="help">（→U↑，S不变）</small></label>
+                    <input id="buyN" type="text" value="0" />
+                </div>
+                <div>
+                    <label>卖出张数<small class="help">（返 (1-手续费)×P）</small></label>
+                    <input id="sellN" type="text" value="0" />
+                </div>
+                <div>
+                    <label>销毁张数<small class="help">（→S↓）</small></label>
+                    <input id="burnN" type="text" value="0" />
+                </div>
+            </div>
+
+            <div class="row3">
+                <div>
+                    <label>执行顺序<small class="help">（以“买”开头）</small></label>
+                    <select id="order">
+                        <option value="buy-sell-burn">买 → 卖 → 销毁</option>
+                        <option value="buy-burn-sell">买 → 销毁 → 卖</option>
+                    </select>
+                    <div class="help">顺序会改变最终结果</div>
+                </div>
+                <div>
+                    <label>卖出手续费<small class="help">（默认 5%）</small></label>
+                    <input id="fee" type="text" value="0.05" />
+                </div>
+                <div>
+                    <label>步长<small class="help">（每步处理张数）</small></label>
+                    <input id="stepSize" type="text" value="1" />
+                    <div class="help">一步 = 连续处理 n 张后，再记录一次。</div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div>
+                    <label>图标渲染效率</label>
+                    <select id="hires">
+                        <option value="0">高效</option>
+                        <option value="1">100%渲染</option>
+                    </select>
+                </div>
+                <div style="display:flex; align-items:flex-end;">
+                    <button id="runBtn" class="btn">运行模拟</button>
+                </div>
+            </div>
+
+            <div id="warn" class="pill bad" style="display:none;">—</div>
+
+            <!-- 有效参数回显 -->
+            <div class="card" style="background:#0f1520;">
+                <div class="kv">
+                    <div class="kv-col">
+                        <div class="kv-item">
+                            <div class="kv-label">有效 S₀：</div>
+                            <div class="kv-value" id="effS0">-</div>
+                        </div>
+                        <div class="kv-item">
+                            <div class="kv-label">有效 P₀：</div>
+                            <div class="kv-value" id="effP0">-</div>
+                        </div>
+                        <div class="kv-item">
+                            <div class="kv-label">计算得到 U₀：</div>
+                            <div class="kv-value" id="effU0">-</div>
+                        </div>
+                        <div class="kv-item">
+                            <div class="kv-label">实际买入数：</div>
+                            <div class="kv-value" id="effBuy">-</div>
+                        </div>
+                    </div>
+                    <div class="kv-col">
+                        <div class="kv-item">
+                            <div class="kv-label">实际卖出数：</div>
+                            <div class="kv-value" id="effSell">-</div>
+                        </div>
+                        <div class="kv-item">
+                            <div class="kv-label">实际销毁数：</div>
+                            <div class="kv-value" id="effBurn">-</div>
+                        </div>
+                        <div class="kv-item">
+                            <div class="kv-label">最终卡牌数 S：</div>
+                            <div class="kv-value" id="simS">-</div>
+                        </div>
+                        <div class="kv-item">
+                            <div class="kv-label">一致性校验：</div>
+                            <div class="kv-value" id="consistency">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stats">
+                <div class="stat">
+                    <h3>最终池子 U（USDC）</h3>
+                    <div class="v" id="uOut">-</div>
+                </div>
+                <div class="stat">
+                    <h3>最终卡牌数 S（张）</h3>
+                    <div class="v" id="sOut">-</div>
+                </div>
+                <div class="stat">
+                    <h3>最终卡牌价格 P（USDC）</h3>
+                    <div class="v" id="pOut">-</div>
+                </div>
+            </div>
+
+            <div class="stats" style="gap:8px;">
+                <span class="pill good" id="chgPill">价格变化：—</span>
+                <span class="pill warn" id="burnAvgPill">销毁平均价：—</span>
+                <span class="pill good" id="burnTotalPill">总销毁金额：—</span>
+            </div>
+
+            <div class="help">公式：P = U / S；买：U += P；卖：U -= (1 - fee) × P；烧：S = max(1, S - 1)。
+                每“步”会连续处理 stepSize 张卡，再记录一次。选择“100%渲染”时，每处理 1 张都会追加记录点。</div>
+        </div>
+
+        <!-- 下：图表 -->
+        <div class="card chart-wrap" style="margin-top:12px;">
+            <canvas id="chart"></canvas>
+        </div>
+
+        <div class="help" style="margin: 16px 0">模型仅供参考 | Made by 0xTank</div>
+    </div>
+
+    <!-- Chart.js（无 SRI，避免移动端完整性校验报错） -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        const $ = id => document.getElementById(id);
+        let chart;
+        const SEGMENT_COLORS = { buy: '#52a8ff', sell: '#f59e0b', burn: '#ef4444' };
+
+        // 仅保留 0-9 . + - e E
+        function parseFloatClean(v, def = 0) {
+            const s = String(v || '').replace(/[^0-9eE\+\-\.]/g, '').trim();
+            if (!s) return def;
+            const n = Number(s);
+            return Number.isFinite(n) ? n : def;
+        }
+        function parseIntClean(v, def = 0) {
+            const s = String(v || '').replace(/[^\d\-\+]/g, '').trim();
+            if (!s) return def;
+            const n = parseInt(s, 10);
+            return Number.isFinite(n) ? n : def;
+        }
+        function fmt(x, digits = 6) {
+            if (!isFinite(x)) return '∞';
+            const abs = Math.abs(x);
+            if (abs >= 1e9) return x.toExponential(2);
+            if (abs >= 1e6) return x.toLocaleString(undefined, { maximumFractionDigits: 0 });
+            const str = Number(x).toFixed(digits);
+            if (digits === 0) return str;
+            return str.replace(/\.?0+$/, '');
+        }
+
+        function simulate({ S0, P0, buyN, sellN, burnN, fee, order, stepSize, hires }) {
+            let warnMsg = null;
+
+            // 初值
+            let S = Number(S0); // 不对发行量做任何数值“转化”
+            let U = S * P0;
+
+            const labels = [];
+            const prices = [];
+            let steps = 0;
+            let effBuy = 0, effSell = 0, effBurn = 0;
+            const segmentOps = [];
+            let burnPriceSum = 0, burnCount = 0, buyCost = 0;
+
+            const pushPoint = (opType = null) => {
+                labels.push(steps);
+                prices.push(U / S);
+                if (labels.length > 1) segmentOps.push(opType);
+            };
+
+            // 记录初始点
+            pushPoint();
+
+            // 单张操作（原子）
+            const buy1 = () => {
+                const price = U / S;
+                U += price;
+                effBuy++;
+                buyCost += price;
+            };
+            const sell1 = () => {
+                const price = U / S;
+                U -= (1 - fee) * price;
+                if (U < 0) U = 0;
+                effSell++;
+            };
+            const burn1 = () => {
+                if (S > 1) {
+                    S -= 1;
+                    effBurn++;
+                    burnCount++;
+                    burnPriceSum += U / S;
+                }
+            };
+
+            // 一步 = 连续处理 stepSize 张，再记录一次
+            const doSteps = (nUnits, unitFn, opType) => {
+                if (nUnits <= 0) return;
+                // 尽量整除为 batchCount 步
+                const batch = Math.max(1, Math.floor(stepSize));
+                let remain = Math.floor(nUnits);
+                while (remain > 0) {
+                    const k = Math.min(batch, remain);
+                    // 高密度记录：每张都记录
+                    if (hires) {
+                        for (let i = 0; i < k; i++) { unitFn(); steps++; pushPoint(opType); }
+                    } else {
+                        for (let i = 0; i < k; i++) { unitFn(); }
+                        steps++; pushPoint(opType);
+                    }
+                    remain -= k;
+                }
+            };
+
+            // 执行顺序（只允许 buy 开头）
+            const ops = order.split('-');
+            for (const op of ops) {
+                if (op === 'buy') doSteps(buyN, buy1, 'buy');
+                if (op === 'sell') doSteps(sellN, sell1, 'sell');
+                if (op === 'burn') {
+                    // 截断：最多只能烧到 S=1
+                    const maxBurn = Math.max(0, S - 1);
+                    const want = Math.floor(burnN);
+                    const actual = Math.min(maxBurn, want);
+                    if (want > maxBurn) {
+                        warnMsg = `销毁张数超出上限：最多还能销毁 ${maxBurn} 张；请求 ${want}，实际 ${actual}。`;
+                    }
+                    doSteps(actual, burn1, 'burn');
+                }
+            }
+
+            const S_simple = S0 - sellN - burnN;
+
+            return {
+                labels, prices, U, S, P: U / S, steps, warnMsg,
+                S_simple,
+                segmentOps,
+                burnAvgPrice: burnCount ? burnPriceSum / burnCount : 0,
+                burnCount,
+                burnTotalValue: burnPriceSum,
+                burnCostRatio: (burnCount > 0 && buyCost > 0) ? (burnPriceSum / buyCost) : null,
+                eff: { effBuy, effSell, effBurn }
+            };
+        }
+
+        function draw(labels, prices, segmentOps) {
+            const ctx = $('chart').getContext('2d');
+            if (chart) chart.destroy();
+            const colors = segmentOps.map(op => SEGMENT_COLORS[op] || SEGMENT_COLORS.buy);
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: '价格 P (USDC)',
+                        data: prices,
+                        pointRadius: 0,
+                        borderWidth: 2,
+                        tension: 0,
+                        borderColor: SEGMENT_COLORS.buy,
+                        segment: {
+                            borderColor: ctx => colors[ctx.p0DataIndex] || SEGMENT_COLORS.buy
+                        }
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: c => ` 价格 ${fmt(c.parsed.y, 6)}` } }
+                    },
+                    scales: {
+                        x: { title: { display: true, text: '步数（每步处理 stepSize 张）' }, grid: { color: 'rgba(255,255,255,.06)' }, ticks: { color: '#b8c7d6' } },
+                        y: { title: { display: true, text: '价格（USDC）' }, grid: { color: 'rgba(255,255,255,.06)' }, ticks: { color: '#b8c7d6' } },
+                    }
+                }
+            });
+        }
+
+        $('runBtn').addEventListener('click', () => {
+            const S0Raw = $('initS').value;            // 保留原始输入字符串
+            const S0 = Number(S0Raw);                   // 仅做一次 Number 转换，不做 floor/max 等处理
+            if (!Number.isFinite(S0)) {
+                const w = $('warn');
+                w.style.display = 'inline-block';
+                w.textContent = '发行量 S₀ 不是有效数字，请输入纯数字（例如 100000）。';
+                return;
+            }
+            const P0 = Math.max(1e-9, parseFloatClean($('initP').value, 1));
+            const buyN = Math.max(0, parseIntClean($('buyN').value, 0));
+            const sellN = Math.max(0, parseIntClean($('sellN').value, 0));
+            const burnN = Math.max(0, parseIntClean($('burnN').value, 0));
+            const fee = Math.min(0.95, Math.max(0, parseFloatClean($('fee').value, 0.05)));
+            const order = $('order').value;
+            const stepSize = Math.max(1, parseIntClean($('stepSize').value, 1));
+            const hires = $('hires').value === '1';
+
+            const out = simulate({ S0, P0, buyN, sellN, burnN, fee, order, stepSize, hires });
+
+            draw(out.labels, out.prices, out.segmentOps);
+
+            $('uOut').textContent = fmt(out.U, 6);
+            $('sOut').textContent = fmt(out.S_simple, 0);
+            $('pOut').textContent = fmt(out.P, 6);
+
+            const pct = (out.P / P0 - 1) * 100;
+            $('chgPill').textContent = `价格变化：${pct >= 0 ? '+' : ''}${fmt(pct, 3)}%`;
+            $('burnAvgPill').textContent = `销毁平均价：${out.burnCount ? fmt(out.burnAvgPrice, 6) : '—'}`;
+            const burnRatioText = (out.burnCostRatio !== null)
+                ? ` (${fmt(out.burnCostRatio * 100, 2)}%)`
+                : '';
+            $('burnTotalPill').textContent = out.burnCount
+                ? `总销毁金额：${fmt(out.burnTotalValue, 6)}${burnRatioText}`
+                : '总销毁金额：—';
+
+            $('effS0').textContent = (S0Raw ?? '').trim(); // 原样显示输入的发行量
+            $('effP0').textContent = fmt(P0, 6);
+            $('effU0').textContent = fmt(S0 * P0, 6);
+            $('effBuy').textContent = out.eff.effBuy;
+            $('effSell').textContent = out.eff.effSell;
+            $('effBurn').textContent = out.eff.effBurn;
+
+            // Deterministic S check（简化逻辑：S_final = S0 - 卖出 - 销毁）
+            const detS = S0 - sellN - burnN;
+            $('simS').textContent = fmt(out.S_simple, 0);
+            const ok = (out.S_simple === detS);
+            $('consistency').textContent = ok ? '✅ 一致' : '❌ 不一致';
+
+            if (out.warnMsg || !ok) {
+                const w = $('warn');
+                w.style.display = 'inline-block';
+                w.textContent = (out.warnMsg ? out.warnMsg + ' ' : '') + (!ok ? '模拟结果与校验不一致，请截图给我。' : '');
+            } else $('warn').style.display = 'none';
+        });
+
+        // 初次渲染
+        $('runBtn').click();
+    </script>
+</body>
+
+</html>
