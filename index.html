@@ -259,12 +259,19 @@
                 </div>
             </div>
 
-            <div class="row">
+            <div class="row3">
                 <div>
                     <label>图标渲染效率</label>
                     <select id="hires">
                         <option value="0">高效</option>
                         <option value="1">100%渲染</option>
+                    </select>
+                </div>
+                <div>
+                    <label>买入卖出步数</label>
+                    <select id="buySellSteps">
+                        <option value="single">一张一步</option>
+                        <option value="all">全部一步</option>
                     </select>
                 </div>
                 <div style="display:flex; align-items:flex-end;">
@@ -379,7 +386,7 @@
             return str.replace(/\.?0+$/, '');
         }
 
-        function simulate({ S0, P0, buyN, sellN, burnN, fee, order, stepSize, hires }) {
+        function simulate({ S0, P0, buyN, sellN, burnN, fee, order, stepSize, hires, buySellSteps }) {
             let warnMsg = null;
 
             // 初值
@@ -424,14 +431,63 @@
                 }
             };
 
+            const applyBulkLinear = (units, opType) => {
+                units = Math.floor(units);
+                if (units <= 0) return true;
+                const price = U / S;
+                if (opType === 'buy') {
+                    if (hires) {
+                        for (let i = 0; i < units; i++) {
+                            U += price;
+                            effBuy++;
+                            buyCost += price;
+                            steps++;
+                            pushPoint(opType);
+                        }
+                    } else {
+                        const delta = price * units;
+                        U += delta;
+                        effBuy += units;
+                        buyCost += delta;
+                        steps++;
+                        pushPoint(opType);
+                    }
+                } else if (opType === 'sell') {
+                    const perUnit = (1 - fee) * price;
+                    if (hires) {
+                        for (let i = 0; i < units; i++) {
+                            U -= perUnit;
+                            if (U < 0) U = 0;
+                            effSell++;
+                            steps++;
+                            pushPoint(opType);
+                        }
+                    } else {
+                        U -= perUnit * units;
+                        if (U < 0) U = 0;
+                        effSell += units;
+                        steps++;
+                        pushPoint(opType);
+                    }
+                }
+                return true;
+            };
+
             // 一步 = 连续处理 stepSize 张，再记录一次
-            const doSteps = (nUnits, unitFn, opType) => {
+            const doSteps = (nUnits, unitFn, opType, stepBehavior = 'default') => {
                 if (nUnits <= 0) return;
                 // 尽量整除为 batchCount 步
                 const batch = Math.max(1, Math.floor(stepSize));
                 let remain = Math.floor(nUnits);
+                if (stepBehavior === 'all' && (opType === 'buy' || opType === 'sell')) {
+                    applyBulkLinear(remain, opType);
+                    return;
+                }
                 while (remain > 0) {
-                    const k = Math.min(batch, remain);
+                    let k;
+                    if (stepBehavior === 'all') k = remain;
+                    else if (stepBehavior === 'single') k = 1;
+                    else k = Math.min(batch, remain);
                     // 高密度记录：每张都记录
                     if (hires) {
                         for (let i = 0; i < k; i++) { unitFn(); steps++; pushPoint(opType); }
@@ -446,8 +502,8 @@
             // 执行顺序（只允许 buy 开头）
             const ops = order.split('-');
             for (const op of ops) {
-                if (op === 'buy') doSteps(buyN, buy1, 'buy');
-                if (op === 'sell') doSteps(sellN, sell1, 'sell');
+                if (op === 'buy') doSteps(buyN, buy1, 'buy', buySellSteps);
+                if (op === 'sell') doSteps(sellN, sell1, 'sell', buySellSteps);
                 if (op === 'burn') {
                     // 截断：最多只能烧到 S=1
                     const maxBurn = Math.max(0, S - 1);
@@ -526,8 +582,9 @@
             const order = $('order').value;
             const stepSize = Math.max(1, parseIntClean($('stepSize').value, 1));
             const hires = $('hires').value === '1';
+            const buySellSteps = $('buySellSteps').value;
 
-            const out = simulate({ S0, P0, buyN, sellN, burnN, fee, order, stepSize, hires });
+            const out = simulate({ S0, P0, buyN, sellN, burnN, fee, order, stepSize, hires, buySellSteps });
 
             draw(out.labels, out.prices, out.segmentOps);
 
