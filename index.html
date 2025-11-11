@@ -388,6 +388,9 @@
 
         function simulate({ S0, P0, buyN, sellN, burnN, fee, order, stepSize, hires, buySellSteps }) {
             let warnMsg = null;
+            const appendWarn = msg => {
+                warnMsg = warnMsg ? `${warnMsg} ${msg}` : msg;
+            };
 
             // 初值
             let S = Number(S0); // 不对发行量做任何数值“转化”
@@ -417,9 +420,11 @@
                 buyCost += price;
             };
             const sell1 = () => {
+                if (S <= 1) return;
                 const price = U / S;
                 U -= (1 - fee) * price;
                 if (U < 0) U = 0;
+                S -= 1;
                 effSell++;
             };
             const burn1 = () => {
@@ -453,19 +458,26 @@
                         pushPoint(opType);
                     }
                 } else if (opType === 'sell') {
-                    const perUnit = (1 - fee) * price;
                     if (hires) {
                         for (let i = 0; i < units; i++) {
-                            U -= perUnit;
+                            if (S <= 1) break;
+                            const priceNow = U / S;
+                            U -= (1 - fee) * priceNow;
                             if (U < 0) U = 0;
+                            S -= 1;
                             effSell++;
                             steps++;
                             pushPoint(opType);
                         }
                     } else {
-                        U -= perUnit * units;
+                        const maxUnits = Math.min(units, Math.max(0, Math.floor(S - 1)));
+                        if (maxUnits <= 0) return true;
+                        const perUnit = (1 - fee) * price;
+                        const delta = perUnit * maxUnits;
+                        U -= delta;
                         if (U < 0) U = 0;
-                        effSell += units;
+                        S -= maxUnits;
+                        effSell += maxUnits;
                         steps++;
                         pushPoint(opType);
                     }
@@ -503,24 +515,29 @@
             const ops = order.split('-');
             for (const op of ops) {
                 if (op === 'buy') doSteps(buyN, buy1, 'buy', buySellSteps);
-                if (op === 'sell') doSteps(sellN, sell1, 'sell', buySellSteps);
+                if (op === 'sell') {
+                    const want = Math.max(0, Math.floor(sellN));
+                    const maxSell = Math.max(0, Math.floor(S - 1));
+                    const actual = Math.min(maxSell, want);
+                    if (want > maxSell) {
+                        appendWarn(`卖出张数超出上限：最多还能卖出 ${maxSell} 张；请求 ${want}，实际 ${actual}。`);
+                    }
+                    doSteps(actual, sell1, 'sell', buySellSteps);
+                }
                 if (op === 'burn') {
                     // 截断：最多只能烧到 S=1
                     const maxBurn = Math.max(0, S - 1);
                     const want = Math.floor(burnN);
                     const actual = Math.min(maxBurn, want);
                     if (want > maxBurn) {
-                        warnMsg = `销毁张数超出上限：最多还能销毁 ${maxBurn} 张；请求 ${want}，实际 ${actual}。`;
+                        appendWarn(`销毁张数超出上限：最多还能销毁 ${maxBurn} 张；请求 ${want}，实际 ${actual}。`);
                     }
                     doSteps(actual, burn1, 'burn');
                 }
             }
 
-            const S_simple = S0 - sellN - burnN;
-
             return {
                 labels, prices, U, S, P: U / S, steps, warnMsg,
-                S_simple,
                 segmentOps,
                 burnAvgPrice: burnCount ? burnPriceSum / burnCount : 0,
                 burnCount,
@@ -589,7 +606,7 @@
             draw(out.labels, out.prices, out.segmentOps);
 
             $('uOut').textContent = fmt(out.U, 6);
-            $('sOut').textContent = fmt(out.S_simple, 0);
+            $('sOut').textContent = fmt(out.S, 0);
             $('pOut').textContent = fmt(out.P, 6);
 
             const pct = (out.P / P0 - 1) * 100;
@@ -609,10 +626,10 @@
             $('effSell').textContent = out.eff.effSell;
             $('effBurn').textContent = out.eff.effBurn;
 
-            // Deterministic S check（简化逻辑：S_final = S0 - 卖出 - 销毁）
-            const detS = S0 - sellN - burnN;
-            $('simS').textContent = fmt(out.S_simple, 0);
-            const ok = (out.S_simple === detS);
+            // Deterministic S check：S_final = S0 - 实际卖出 - 实际销毁
+            const detS = S0 - out.eff.effSell - out.eff.effBurn;
+            $('simS').textContent = fmt(out.S, 0);
+            const ok = Math.abs(out.S - detS) < 1e-9;
             $('consistency').textContent = ok ? '✅ 一致' : '❌ 不一致';
 
             if (out.warnMsg || !ok) {
