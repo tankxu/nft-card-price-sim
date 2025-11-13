@@ -64,6 +64,12 @@
             gap: 12px
         }
 
+        .row4 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr;
+            gap: 12px;
+        }
+
         label {
             display: block;
             color: var(--muted);
@@ -196,7 +202,8 @@
         @media (max-width:640px) {
 
             .row,
-            .row3 {
+            .row3,
+            .row4 {
                 grid-template-columns: 1fr
             }
 
@@ -239,7 +246,7 @@
                 </div>
             </div>
 
-            <div class="row3">
+            <div class="row4">
                 <div>
                     <label>执行顺序<small class="help">（以“买”开头）</small></label>
                     <select id="order">
@@ -255,7 +262,12 @@
                 <div>
                     <label>步长<small class="help">（每步处理张数）</small></label>
                     <input id="stepSize" type="text" value="1" />
-                    <div class="help">一步 = 连续处理 n 张后，再记录一次。</div>
+                    <div class="help">一步 = 连续处理 n 张后，再记录一次</div>
+                </div>
+                <div>
+                    <label>销毁保留比例<small class="help">（0-100%）</small></label>
+                    <input id="burnRetain" type="text" value="40" />
+                    <div class="help">销毁时仅移除 (1-比例)×卡牌价值</div>
                 </div>
             </div>
 
@@ -271,7 +283,7 @@
                     <label>买入卖出步数</label>
                     <select id="buySellSteps">
                         <option value="single">一张一步</option>
-                        <option value="all">全部一步</option>
+                        <option value="all" selected>全部一步</option>
                     </select>
                 </div>
                 <div style="display:flex; align-items:flex-end;">
@@ -344,7 +356,8 @@
                 <span class="pill good" id="burnTotalPill">总销毁金额：—</span>
             </div>
 
-            <div class="help">公式：P = U / S；买：U += P；卖：U -= (1 - fee) × P；烧：S = max(1, S - 1)。
+            <div class="help">公式：P = U / S；买：U += P；卖：U -= (1 - fee) × P；烧：U = max(0, U - (1 - 保留比例) × P)，S = max(1, S -
+                1)。
                 每“步”会连续处理 stepSize 张卡，再记录一次。选择“100%渲染”时，每处理 1 张都会追加记录点。</div>
         </div>
 
@@ -386,7 +399,7 @@
             return str.replace(/\.?0+$/, '');
         }
 
-        function simulate({ S0, P0, buyN, sellN, burnN, fee, order, stepSize, hires, buySellSteps }) {
+        function simulate({ S0, P0, buyN, sellN, burnN, fee, order, stepSize, hires, buySellSteps, burnRetain }) {
             let warnMsg = null;
             const appendWarn = msg => {
                 warnMsg = warnMsg ? `${warnMsg} ${msg}` : msg;
@@ -395,13 +408,14 @@
             // 初值
             let S = Number(S0); // 不对发行量做任何数值“转化”
             let U = S * P0;
+            const retain = Math.min(1, Math.max(0, Number(burnRetain ?? 0)));
 
             const labels = [];
             const prices = [];
             let steps = 0;
             let effBuy = 0, effSell = 0, effBurn = 0;
             const segmentOps = [];
-            let burnPriceSum = 0, burnCount = 0, buyCost = 0;
+            let burnPriceSum = 0, burnRemovedSum = 0, burnCount = 0, buyCost = 0;
 
             const pushPoint = (opType = null) => {
                 labels.push(steps);
@@ -429,10 +443,15 @@
             };
             const burn1 = () => {
                 if (S > 1) {
+                    const price = U / S;
+                    const removed = price * (1 - retain);
+                    U -= removed;
+                    if (U < 0) U = 0;
                     S -= 1;
                     effBurn++;
                     burnCount++;
-                    burnPriceSum += U / S;
+                    burnPriceSum += price;
+                    burnRemovedSum += removed;
                 }
             };
 
@@ -540,9 +559,12 @@
                 labels, prices, U, S, P: U / S, steps, warnMsg,
                 segmentOps,
                 burnAvgPrice: burnCount ? burnPriceSum / burnCount : 0,
+                burnAvgRemoval: burnCount ? burnRemovedSum / burnCount : 0,
                 burnCount,
                 burnTotalValue: burnPriceSum,
+                burnTotalRemoval: burnRemovedSum,
                 burnCostRatio: (burnCount > 0 && buyCost > 0) ? (burnPriceSum / buyCost) : null,
+                burnRetain: retain,
                 eff: { effBuy, effSell, effBurn }
             };
         }
@@ -596,12 +618,14 @@
             const sellN = Math.max(0, parseIntClean($('sellN').value, 0));
             const burnN = Math.max(0, parseIntClean($('burnN').value, 0));
             const fee = Math.min(0.95, Math.max(0, parseFloatClean($('fee').value, 0.05)));
+            const burnRetainPct = Math.min(100, Math.max(0, parseFloatClean($('burnRetain').value, 40)));
+            const burnRetain = burnRetainPct / 100;
             const order = $('order').value;
             const stepSize = Math.max(1, parseIntClean($('stepSize').value, 1));
             const hires = $('hires').value === '1';
             const buySellSteps = $('buySellSteps').value;
 
-            const out = simulate({ S0, P0, buyN, sellN, burnN, fee, order, stepSize, hires, buySellSteps });
+            const out = simulate({ S0, P0, buyN, sellN, burnN, fee, order, stepSize, hires, buySellSteps, burnRetain });
 
             draw(out.labels, out.prices, out.segmentOps);
 
