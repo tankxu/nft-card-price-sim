@@ -356,8 +356,8 @@
                 <span class="pill good" id="burnTotalPill">总销毁金额：—</span>
             </div>
 
-            <div class="help">公式：P = U / S；买：U += P；卖：U -= (1 - fee) × P；烧：U = max(0, U - (1 - 保留比例) × P)，S = max(1, S -
-                1)。
+            <div class="help">公式：P = U / S；买：U += P；卖：U -= (1 - fee) × P（S 不变）；烧：U = max(0, U - (1 - 保留比例) × P)，S =
+                max(1, S - 1)。
                 每“步”会连续处理 stepSize 张卡，再记录一次。选择“100%渲染”时，每处理 1 张都会追加记录点。</div>
         </div>
 
@@ -434,11 +434,10 @@
                 buyCost += price;
             };
             const sell1 = () => {
-                if (S <= 1) return;
+                if (S <= 0) return;
                 const price = U / S;
                 U -= (1 - fee) * price;
                 if (U < 0) U = 0;
-                S -= 1;
                 effSell++;
             };
             const burn1 = () => {
@@ -479,23 +478,20 @@
                 } else if (opType === 'sell') {
                     if (hires) {
                         for (let i = 0; i < units; i++) {
-                            if (S <= 1) break;
                             const priceNow = U / S;
                             U -= (1 - fee) * priceNow;
                             if (U < 0) U = 0;
-                            S -= 1;
                             effSell++;
                             steps++;
                             pushPoint(opType);
                         }
                     } else {
-                        const maxUnits = Math.min(units, Math.max(0, Math.floor(S - 1)));
+                        const maxUnits = Math.max(0, Math.floor(units));
                         if (maxUnits <= 0) return true;
                         const perUnit = (1 - fee) * price;
                         const delta = perUnit * maxUnits;
                         U -= delta;
                         if (U < 0) U = 0;
-                        S -= maxUnits;
                         effSell += maxUnits;
                         steps++;
                         pushPoint(opType);
@@ -535,12 +531,7 @@
             for (const op of ops) {
                 if (op === 'buy') doSteps(buyN, buy1, 'buy', buySellSteps);
                 if (op === 'sell') {
-                    const want = Math.max(0, Math.floor(sellN));
-                    const maxSell = Math.max(0, Math.floor(S - 1));
-                    const actual = Math.min(maxSell, want);
-                    if (want > maxSell) {
-                        appendWarn(`卖出张数超出上限：最多还能卖出 ${maxSell} 张；请求 ${want}，实际 ${actual}。`);
-                    }
+                    const actual = Math.max(0, Math.floor(sellN));
                     doSteps(actual, sell1, 'sell', buySellSteps);
                 }
                 if (op === 'burn') {
@@ -650,8 +641,8 @@
             $('effSell').textContent = out.eff.effSell;
             $('effBurn').textContent = out.eff.effBurn;
 
-            // Deterministic S check：S_final = S0 - 实际卖出 - 实际销毁
-            const detS = S0 - out.eff.effSell - out.eff.effBurn;
+            // Deterministic S check：卖出不影响 S，只有销毁会减少
+            const detS = S0 - out.eff.effBurn;
             $('simS').textContent = fmt(out.S, 0);
             const ok = Math.abs(out.S - detS) < 1e-9;
             $('consistency').textContent = ok ? '✅ 一致' : '❌ 不一致';
